@@ -1,0 +1,10 @@
+April 7 ----------- nak belajar guna pi
+start pi
+cuba access camera dalam pi pakai opencv
+jadi
+
+April 8 ----------- nak cuba download yolo
+download macam macam
+storage tak cukup (16gb)
+tukar buat dekat windows dulu
+    coding access camera .py semalam boleh pakai dekat windows
