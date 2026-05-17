@@ -1,0 +1,10 @@
+# PAWS runtime dependencies
+opencv-python>=4.8
+flask>=3.0
+ultralytics>=8.0
+requests>=2.31
+BlynkLib>=1.0
+numpy>=1.24
+
+# Test dependencies
+pytest>=8.0
