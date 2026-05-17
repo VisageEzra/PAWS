@@ -1,0 +1,31 @@
+# Secrets — never commit these
+.env
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+paws_env/
+*_env/
+venv/
+.venv/
+
+# PAWS runtime output
+detections/
+terminal_history.json
+
+# Model weights (large binaries — distribute separately)
+*.pt
+!best.pt.bak
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
