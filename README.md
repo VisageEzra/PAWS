@@ -1,3 +1,7 @@
+<div align="center">
+## PAWS: PREDICTIVE ANIMAL WARNING SYSTEM 
+<div align="center">
+
 ## 📖 The Story Behind PAWS
 
 Animals don't cross roads randomly. They follow the **same paths for generations** — natural crossing points that become predictable *hotspots*. In rural areas and villages, these paths often cut straight across roads where people drive. When a driver can't see an animal in time, the result is a collision: damaged vehicles, injured people, and dead animals.
