@@ -1,7 +1,3 @@
-<div align="center">
-
----
-
 ## 📖 The Story Behind PAWS
 
 Animals don't cross roads randomly. They follow the **same paths for generations** — natural crossing points that become predictable *hotspots*. In rural areas and villages, these paths often cut straight across roads where people drive. When a driver can't see an animal in time, the result is a collision: damaged vehicles, injured people, and dead animals.
@@ -197,5 +193,3 @@ A final-year **Diploma in Information Technology** project — built by three of
 ## 📝 Note
 
 PAWS is a **student prototype**, evaluated under controlled demonstration conditions. Its underlying approach — combining low-power motion sensing, on-device computer vision, instant driver warnings, and authority-facing data logging — is designed to be adapted for real-world roadside deployment with further field testing.
-
-<div align="center">
