@@ -188,9 +188,9 @@ The controller connects to the Blynk app and launches the detection engine autom
 
 A final-year **Diploma in Information Technology** project — built by three of us. Massive thanks to my teammates who made PAWS happen 🙌
 
-- 🐾 [**@VisageEzra**](https://github.com/VisageEzra) — Dannie Ezzraf *(me)*
-- 🔥 [**@PISHGG**](https://github.com/PISHGG) — Amir Rashdan
-- ⚡ [**@Nvyyyyuu**](https://github.com/Nvyyyyuu) — Zikril Hakim
+- 🐾 [**@VisageEzra**](https://github.com/VisageEzra) *(me)*
+- 🐾 [**@PISHGG**](https://github.com/PISHGG) 
+- 🐾 [**@Nvyyyyuu**](https://github.com/Nvyyyyuu) 
 
 ---
 
