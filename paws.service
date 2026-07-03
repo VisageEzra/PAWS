@@ -1,0 +1,34 @@
+[Unit]
+Description=PAWS Wildlife Detection Controller
+Documentation=file:///home/paws/Desktop/PAWS_Rasberrypi/AUTOSTART.md
+# Blynk Cloud needs the network up before the controller tries to connect.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paws
+# Run from the project dir so relative paths (.env, detections/) resolve.
+WorkingDirectory=/home/paws/Desktop/PAWS_Rasberrypi
+# Use the PAWS_18_5 venv interpreter — it has BlynkLib, cv2, ultralytics, ncnn,
+# RPi.GPIO. blynk_controller launches paws_detect.py with this same sys.executable,
+# so the detection subprocess inherits the venv automatically.
+ExecStart=/home/paws/Desktop/PAWS_18_5/venv/bin/python -u /home/paws/Desktop/PAWS_Rasberrypi/blynk_controller.py
+
+# Restart only on crash (non-zero exit). A clean `systemctl stop` sends SIGTERM,
+# which the controller handles by setting the system OFFLINE and exiting 0 — that
+# must NOT trigger a restart, so we use on-failure (not always).
+Restart=on-failure
+RestartSec=10
+
+# Give the controller time to push OFFLINE to Blynk + release the camera on stop.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Unbuffered logs already (-u); send them to the journal.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=paws
+
+[Install]
+WantedBy=multi-user.target

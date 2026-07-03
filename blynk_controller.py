@@ -37,6 +37,8 @@ from config import (
     PIN_TERMINAL,
     pin_number,
     validate_config,
+    POWERBANK_KEEPALIVE, KEEPALIVE_PULSE_SEC, KEEPALIVE_PULSE_MS,
+    NOTIFY_ENABLED, BLYNK_NOTIFY_EVENT,
 )
 
 # ─────────────────── STATE ───────────────────
@@ -46,6 +48,11 @@ _blynk = BlynkLib.Blynk(BLYNK_AUTH_TOKEN, server="blynk.cloud", heartbeat=45)
 _paws_process: Optional[subprocess.Popen] = None
 _process_lock = threading.Lock()         # serialises all _paws_process state changes
 _msg_queue: queue.Queue = queue.Queue()
+
+_switch_on: bool = False   # True while the V1 switch is ON
+_restart_count: int = 0    # consecutive unexpected restarts since last switch-on
+_MAX_RESTARTS = 5          # give up auto-restarting after this many crashes in a row
+_RESTART_DELAY = 5         # seconds to wait before each auto-restart
 
 _PAWS_SCRIPT = os.path.join(SCRIPT_DIR, "paws_detect.py")
 _MAX_TERMINAL_LINES = 5
@@ -86,6 +93,28 @@ def _http_set_property(pin: str, prop: str, value: str) -> None:
 
 def _http_set_color(pin: str, hex_color: str) -> None:
     _http_set_property(pin, "color", hex_color)
+
+
+def _http_log_event(code: str, description: str) -> None:
+    """Fire a Blynk push notification via the HTTP logEvent API.
+
+    The event `code` must exist in the Blynk Console (Template → Events) with
+    push notifications enabled, otherwise Blynk returns 400 and no push is sent.
+    Fire-and-forget — a failed notification must never disrupt detection.
+    """
+    try:
+        resp = requests.get(
+            "https://blynk.cloud/external/api/logEvent",
+            params={"token": BLYNK_AUTH_TOKEN, "code": code, "description": description},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            print(f"LOG: [NOTIFY] Push sent (event '{code}'): {description}")
+        else:
+            print(f"LOG: [NOTIFY] Push rejected ({resp.status_code}): {resp.text[:120]} "
+                  f"— check the '{code}' event exists in the Blynk Console.")
+    except requests.RequestException as exc:
+        print(f"LOG: [NOTIFY] Push FAILED: {exc}")
 
 
 # ─────────────────── HISTORY PERSISTENCE ───────────────────
@@ -149,6 +178,29 @@ def _history_flush_worker() -> None:
     while True:
         time.sleep(_HISTORY_SAVE_INTERVAL)
         _save_history_now()
+
+
+# ─────────────────── POWERBANK ANTI-SHUTOFF KEEP-ALIVE ───────────────────
+
+def _powerbank_keepalive_worker() -> None:
+    """Emit a brief CPU load pulse every KEEPALIVE_PULSE_SEC seconds.
+
+    A near-idle Pi can drop below a USB powerbank's minimum-load threshold, at
+    which point the bank cuts the rail and the whole system dies. This periodic
+    pulse keeps average draw above that floor without meaningfully spending
+    battery (a ~120 ms burst every 20 s is well under 1% duty on one core).
+
+    Lives in the always-on controller so it protects every state — switch OFF,
+    SLEEP, and deep PIR standby — not just while detection is running.
+    """
+    import math
+    pulse_sec = max(KEEPALIVE_PULSE_MS, 1) / 1000.0
+    while True:
+        time.sleep(max(KEEPALIVE_PULSE_SEC, 1))
+        end = time.monotonic() + pulse_sec
+        acc = 0.0
+        while time.monotonic() < end:          # busy-spin → raises current draw
+            acc += math.sqrt(2.0) * math.sin(acc + 1.0)
 
 
 # ─────────────────── TERMINAL SYNC ───────────────────
@@ -269,12 +321,16 @@ def _on_connected():
 
 @_blynk.ON("V1")
 def _on_switch(value):
+    global _switch_on, _restart_count
     if value[0] == "1":
+        _switch_on = True
+        _restart_count = 0
         _log("LOG: [BLYNK] Switch ON → waking PAWS...")
         _msg_queue.put(("vw", pin_number(PIN_STATUS), "ONLINE"))
         _http_set_color(PIN_STATUS, "#00FF00")
         _spawn_paws()
     else:
+        _switch_on = False
         _log("LOG: [BLYNK] Switch OFF → PAWS entering SLEEP")
         _msg_queue.put(("vw", pin_number(PIN_STATUS), "SLEEP"))
         _http_set_color(PIN_STATUS, "#FFA500")
@@ -291,12 +347,15 @@ def parse_subprocess_line(line: str) -> Optional[tuple]:
 
     Returns:
         ('v6', message)            — event log entry
+        ('notify', description)    — Blynk push notification
         ('pin', pin_str, value)    — virtual pin write
         ('gallery', pin, url)      — image gallery push
         None                       — forward to V4 terminal as-is
     """
     if line.startswith("[V6] "):
         return ("v6", line[5:])
+    elif line.startswith("[NOTIFY] "):
+        return ("notify", line[9:])
     elif line.startswith("[PIN_UPDATE] "):
         parts = line.split(" ", 2)
         if len(parts) == 3:
@@ -332,6 +391,15 @@ def _read_subprocess(proc: subprocess.Popen) -> None:
                 _sync_terminal(pin_number(PIN_TERMINAL), _v4_history, line)
             elif action[0] == "v6":
                 _sync_terminal(6, _v6_history, action[1])
+            elif action[0] == "notify":
+                # Fire-and-forget push via HTTP — runs off the Blynk run() loop, so
+                # it never blocks pin writes or the heartbeat. Gated by NOTIFY_ENABLED.
+                if NOTIFY_ENABLED:
+                    threading.Thread(
+                        target=_http_log_event,
+                        args=(BLYNK_NOTIFY_EVENT, action[1]),
+                        daemon=True,
+                    ).start()
             elif action[0] == "pin":
                 _msg_queue.put(("vw", pin_number(action[1]), action[2]))
             elif action[0] == "gallery":
@@ -357,9 +425,22 @@ def _read_subprocess(proc: subprocess.Popen) -> None:
         else:
             became_idle = False
     if became_idle:
+        global _restart_count
         print("LOG: [PAWS] Detection process exited — returning to SLEEP")
         _msg_queue.put(("vw", pin_number(PIN_STATUS), "SLEEP"))
         _http_set_color(PIN_STATUS, "#D3D3D3")
+
+        # Auto-restart if the switch is still ON (unexpected exit, not user-triggered)
+        if _switch_on and _restart_count < _MAX_RESTARTS:
+            _restart_count += 1
+            print(f"LOG: [PAWS] Unexpected exit — restarting detection ({_restart_count}/{_MAX_RESTARTS})...")
+            _http_write(PIN_STATUS, "ONLINE")
+            _http_set_color(PIN_STATUS, "#FFA500")
+            time.sleep(_RESTART_DELAY)
+            if _switch_on:   # re-check: user may have turned switch off during the delay
+                _spawn_paws()
+        elif _switch_on and _restart_count >= _MAX_RESTARTS:
+            print(f"LOG: [PAWS] Giving up after {_MAX_RESTARTS} restarts — switch the system OFF and ON to retry.")
 
 
 # ─────────────────── MAIN LOOP ───────────────────
@@ -395,6 +476,14 @@ def main() -> None:
 
     # Start background flusher so we don't write JSON on every single detection
     threading.Thread(target=_history_flush_worker, daemon=True).start()
+
+    # Powerbank anti-shutoff keep-alive (prevents the bank cutting power on idle)
+    if POWERBANK_KEEPALIVE:
+        threading.Thread(target=_powerbank_keepalive_worker, daemon=True).start()
+        _log(
+            f"LOG: [POWER] Powerbank keep-alive ON "
+            f"({KEEPALIVE_PULSE_MS} ms pulse every {KEEPALIVE_PULSE_SEC} s)"
+        )
 
     _log("LOG: [BLYNK] Controller Active — listening for app commands...")
 

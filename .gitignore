@@ -29,3 +29,14 @@ terminal_history.json
 # OS
 .DS_Store
 Thumbs.db
+
+# This project's virtual env folder is literally named "env"
+env/
+
+# Keep the person-detection model we actually need
+!yolov8n.pt
+
+# Legacy/unused model folders — don't upload
+best_ncnn_model/
+yolov8s_ncnn_model/
+yolov8n_ncnn_model/
