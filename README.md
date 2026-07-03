@@ -1,6 +1,6 @@
 <div align="center">
 ## PAWS: PREDICTIVE ANIMAL WARNING SYSTEM 
-<div align="center">
+</div>
 
 ---
 
